@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RCA Tree</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#1c2733; --muted:#5b6876; --line:#d5dbe4; --paper:#eef1f5; }
+  html, body { height:100%; }
+  body { font-family:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color:var(--ink); background:var(--paper); }
+  #viewport {
+    background-color:var(--paper);
+    background-image:radial-gradient(#cbd3de 1px, transparent 1px);
+    background-size:22px 22px;
+  }
+  #stage { position:absolute; left:0; top:0; transform-origin:0 0; }
+  #edges { position:absolute; left:0; top:0; pointer-events:none; overflow:visible; }
+  .edge { fill:none; stroke:#c3ccd8; stroke-width:1.5; transition:stroke .15s, stroke-width .15s; }
+  .edge.tag { stroke-dasharray:5 4; }
+  .edge.active { stroke:var(--c); stroke-width:2.5; }
+  .edge.hot { stroke:var(--c); stroke-width:3.5; }
+  .col { position:absolute; width:232px; display:flex; flex-direction:column; gap:8px; }
+  .col.enter { animation:enter .2s ease-out; }
+  @keyframes enter { from { opacity:0; transform:translateX(-10px); } to { opacity:1; transform:none; } }
+  .head { position:absolute; top:8px; width:232px; font-size:12px; font-weight:600; color:var(--muted); display:flex; align-items:center; gap:6px; }
+  .head i { width:8px; height:8px; border-radius:2px; background:var(--c); display:inline-block; }
+  .head span { font-weight:400; }
+
+  .node {
+    width:232px; text-align:left; background:#fff; border:1px solid var(--line); border-left:4px solid var(--c);
+    border-radius:8px; padding:9px 10px 9px 11px; display:flex; gap:8px; align-items:center; justify-content:space-between;
+    font-size:13px; line-height:1.3; color:var(--ink); cursor:pointer;
+    transition:background .15s, color .15s, border-color .15s, box-shadow .15s, opacity .15s;
+  }
+  .node:hover { border-color:var(--c); box-shadow:0 3px 12px -5px var(--c); }
+  .node .meta { display:flex; align-items:center; gap:5px; flex:none; }
+  .node .cnt { font-size:11px; background:var(--paper); color:var(--muted); border-radius:99px; padding:1px 7px; font-variant-numeric:tabular-nums; }
+  .node .chev { width:12px; height:12px; opacity:.45; }
+  .node.sel { background:var(--c); color:#fff; border-color:var(--c); box-shadow:0 4px 14px -6px var(--c); }
+  .node.sel .cnt { background:rgba(255,255,255,.22); color:#fff; }
+  .node.sel .chev { opacity:.9; }
+  .col.has-sel .node:not(.sel):not(:hover) { opacity:.55; }
+
+  .group { width:232px; background:#fff; border:1px dashed #a9b4c2; border-top:4px solid var(--c); border-radius:8px; padding:10px; }
+  .group h3 { font-size:13px; font-weight:600; margin:0; }
+  .group p { font-size:11.5px; color:var(--muted); margin:2px 0 8px; line-height:1.35; }
+  .chip {
+    display:flex; align-items:center; gap:8px; width:100%; text-align:left; font-size:12.5px; padding:6px 8px; margin-top:4px;
+    border:1px solid var(--line); border-radius:6px; background:#fafbfc; cursor:pointer; transition:background .15s, border-color .15s, color .15s;
+  }
+  .chip::before { content:''; width:9px; height:9px; border-radius:99px; border:1.5px solid var(--c); flex:none; }
+  .chip:hover { border-color:var(--c); background:#fff; }
+  .chip.sel { background:var(--c); border-color:var(--c); color:#fff; }
+  .chip.sel::before { background:#fff; border-color:#fff; }
+
+  .remarks { width:232px; background:#fff; border:1px solid var(--line); border-top:4px solid var(--c); border-radius:8px; padding:10px; }
+  .remarks h3 { font-size:13px; font-weight:600; margin:0; }
+  .remarks p { font-size:11.5px; color:var(--muted); margin:2px 0 8px; line-height:1.35; }
+  .remarks textarea { width:100%; min-height:130px; resize:vertical; font:inherit; font-size:13px; line-height:1.4; padding:8px; border:1px solid var(--line); border-radius:6px; background:#fafbfc; color:var(--ink); }
+  .remarks textarea:focus { outline:2px solid var(--c); outline-offset:1px; background:#fff; }
+  .crumb { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; padding:4px 10px; border-radius:99px; border:1px solid var(--c); color:var(--c); background:#fff; cursor:pointer; white-space:nowrap; transition:background .15s, color .15s; }
+  .crumb:hover { background:var(--c); color:#fff; }
+  .crumb.tag { border-style:dashed; }
+  .crumb small { font-size:11px; opacity:.75; }
+  .sep { color:#9aa6b5; font-size:12px; }
+  button:focus-visible { outline:2px solid #1f3a5f; outline-offset:2px; }
+  .tool { border:1px solid var(--line); background:#fff; border-radius:6px; padding:5px 10px; font-size:13px; cursor:pointer; transition:background .15s; }
+  .tool:hover { background:#f3f5f8; }
+  @media (prefers-reduced-motion: reduce) { .col.enter { animation:none; } * { transition:none !important; } }
+</style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+
+<header class="bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+  <div class="mr-2">
+    <h1 class="text-[17px] font-semibold leading-tight">Root cause analysis tree</h1>
+    <p id="stats" class="text-xs text-slate-500"></p>
+  </div>
+  <div id="crumbs" class="flex-1 min-w-[240px] flex flex-wrap items-center gap-1.5" aria-label="Active path"></div>
+  <div class="flex items-center gap-2">
+    <button id="zoomOut" class="tool" title="Zoom out" aria-label="Zoom out">&minus;</button>
+    <span id="zoomLbl" class="text-xs text-slate-500 w-10 text-center tabular-nums">100%</span>
+    <button id="zoomIn" class="tool" title="Zoom in" aria-label="Zoom in">+</button>
+    <button id="copy" class="tool" title="Copy the active path as text">Copy path</button>
+    <button id="reset" class="tool font-medium" style="background:#1f3a5f;color:#fff;border-color:#1f3a5f">Reset</button>
+  </div>
+</header>
+
+<div id="status" class="px-4 py-1.5 text-xs text-slate-600 bg-slate-50 border-b border-slate-200" aria-live="polite"></div>
+
+<main id="viewport" class="flex-1 relative overflow-auto">
+  <div id="sizer" style="position:relative">
+    <div id="stage">
+      <svg id="edges"></svg>
+      <div id="heads"></div>
+      <div id="cols"></div>
+      <div id="hint" style="position:absolute;width:250px;font-size:13px;color:#5b6876;line-height:1.5"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const DATA = {"models":{"Without Generator":{"causes":["Lessor Issue","Access Issue","Force Majeure","Security Risk","Not Applicable"],"grids":[],"tree":[{"n":"CPF-SPI","c":[{"n":"Component Issue","c":[{"n":"Battery","c":[{"n":"Battery","c":[{"n":"Poor BBUT","c":[],"k":1},{"n":"No Battery Backup - Defective","c":[],"k":1},{"n":"Exploded - High temperature","c":[],"k":1}],"k":3}],"k":3}],"k":3},{"n":"Theft and Vandalism","c":[{"n":"Battery","c":[{"n":"Battery","c":[{"n":"Missing Battery - Stolen","c":[],"k":1}],"k":1}],"k":1}],"k":1},{"n":"Prolonged SPI","c":[{"n":"Prolonged SPI","c":[{"n":"Prolonged SPI","c":[{"n":"Prolonged SPI","c":[],"k":1}],"k":1}],"k":1}],"k":1}],"k":5},{"n":"CPF-UPI","c":[{"n":"Component Issue","c":[{"n":"Battery","c":[{"n":"Battery","c":[{"n":"Poor BBUT","c":[],"k":1},{"n":"No Battery Backup - Defective","c":[],"k":1},{"n":"Exploded - High temperature","c":[],"k":1}],"k":3}],"k":3}],"k":3},{"n":"Theft and Vandalism","c":[{"n":"Battery","c":[{"n":"Battery","c":[{"n":"Missing Battery - Stolen","c":[],"k":1}],"k":1}],"k":1}],"k":1},{"n":"Prolonged UPI","c":[{"n":"Prolonged UPI","c":[{"n":"Prolonged UPI","c":[{"n":"Prolonged UPI","c":[],"k":1}],"k":1}],"k":1}],"k":1},{"n":"Force Majeure","c":[{"n":"Force Majeure","c":[{"n":"Force Majeure","c":[{"n":"Typhoon","c":[],"k":1},{"n":"Terrorism","c":[],"k":1},{"n":"Flood","c":[],"k":1}],"k":3}],"k":3}],"k":3}],"k":8},{"n":"No Grid Issue","c":[{"n":"Component Issue","c":[{"n":"External AC","c":[{"n":"Transformer","c":[{"n":"Low Voltage - Secondary Line Distant to Site","c":[],"k":1},{"n":"Low Voltage - Capacity is less than Load Demand","c":[],"k":1},{"n":"Low Voltage - Shared Transformer with Community","c":[],"k":1},{"n":"Busted - Capacity is less than Load Demand","c":[],"k":1},{"n":"Busted - Deteriorated / EUL / Defective","c":[],"k":1},{"n":"Damaged - Human Error","c":[],"k":1}],"k":6},{"n":"Fuselink","c":[{"n":"Busted - Foreign Object Short Circuit","c":[],"k":1},{"n":"Busted - Overloaded Circuit","c":[],"k":1}],"k":2},{"n":"Dropwire","c":[{"n":"Damaged - Poor Installation","c":[],"k":1},{"n":"Damaged - Rodent Bite","c":[],"k":1},{"n":"Underrated - Capacity Overload","c":[],"k":1}],"k":3},{"n":"Service Entrance Wire","c":[{"n":"Damaged - Poor Installation","c":[],"k":1},{"n":"Damaged - Rodent Bite","c":[],"k":1},{"n":"Underrated - Capacity Overload","c":[],"k":1}],"k":3},{"n":"Line Wire","c":[{"n":"Damaged - Poor Installation","c":[],"k":1},{"n":"Damaged - Rodent Bite","c":[],"k":1},{"n":"Underrated - Capacity Overload","c":[],"k":1}],"k":3},{"n":"KWH Meter","c":[{"n":"Burnt - Loose Connection","c":[],"k":1},{"n":"Burnt - Electrical Overloading","c":[],"k":1},{"n":"Burnt - Short Circuit","c":[],"k":1},{"n":"Damaged - Human Error","c":[],"k":1}],"k":4}],"k":21},{"n":"Internal AC","c":[{"n":"MCB Breaker","c":[{"n":"Burnt - Loose Connection","c":[],"k":1},{"n":"Burnt - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Short Circuit","c":[],"k":1}],"k":4},{"n":"MCB Wire","c":[{"n":"Damaged - Poor Installation","c":[],"k":1},{"n":"Damaged - Rodent Bite","c":[],"k":1},{"n":"Damaged - Foreign Object Short Circuit","c":[],"k":1},{"n":"Damaged - Undersized","c":[],"k":1}],"k":4},{"n":"ECB Breaker","c":[{"n":"Burnt - Loose Connection","c":[],"k":1},{"n":"Burnt - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Short Circuit","c":[],"k":1}],"k":4},{"n":"ECB Wire","c":[{"n":"Damaged - Poor Installation","c":[],"k":1},{"n":"Damaged - Rodent Bite","c":[],"k":1},{"n":"Damaged - Foreign Object Short Circuit","c":[],"k":1},{"n":"Damaged - Undersized","c":[],"k":1}],"k":4},{"n":"MDP Breaker","c":[{"n":"Burnt - Loose Connection","c":[],"k":1},{"n":"Burnt - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Short Circuit","c":[],"k":1}],"k":4},{"n":"MDP Wire","c":[{"n":"Damaged - Poor Installation","c":[],"k":1},{"n":"Damaged - Rodent Bite","c":[],"k":1},{"n":"Damaged - Foreign Object Short Circuit","c":[],"k":1},{"n":"Damaged - Undersized","c":[],"k":1}],"k":4},{"n":"ACPDB Breaker","c":[{"n":"Burnt - Loose Connection","c":[],"k":1},{"n":"Burnt - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Short Circuit","c":[],"k":1}],"k":4},{"n":"ACPDB Wire","c":[{"n":"Damaged - Poor Installation","c":[],"k":1},{"n":"Damaged - Rodent Bite","c":[],"k":1},{"n":"Damaged - Foreign Object Short Circuit","c":[],"k":1},{"n":"Damaged - Undersized","c":[],"k":1}],"k":4}],"k":32},{"n":"Rectifier System","c":[{"n":"Modules","c":[{"n":"Underrated - Capacity Overload","c":[],"k":1},{"n":"Defective","c":[],"k":1}],"k":2},{"n":"Backplane","c":[{"n":"Burnt","c":[],"k":1}],"k":1},{"n":"Controller","c":[{"n":"Defective","c":[],"k":1}],"k":1},{"n":"Contactor","c":[{"n":"Defective","c":[],"k":1}],"k":1},{"n":"Terminal Block","c":[{"n":"Burnt - Loose Connection","c":[],"k":1}],"k":1},{"n":"Breaker","c":[{"n":"Tripped - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Short Circuit","c":[],"k":1}],"k":2}],"k":8}],"k":61},{"n":"Force Majeure","c":[{"n":"External AC","c":[{"n":"Transformer","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"Fuselink","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"Dropwire","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"Service Entrance Wire","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"Line Wire","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"KWH Meter","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3}],"k":18},{"n":"Internal AC","c":[{"n":"MCB Breaker","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"MCB Wire","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"ECB Breaker","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"ECB Wire","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"MDP Breaker","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"MDP Wire","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"ACPDB Breaker","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"ACPDB Wire","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3}],"k":24},{"n":"Rectifier System","c":[{"n":"Rectifier System","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4}],"k":4}],"k":46},{"n":"Theft and Vandalism","c":[{"n":"External AC","c":[{"n":"Transformer","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Illegal Tapping","c":[],"k":1}],"k":2},{"n":"Fuselink","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Dropwire","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Damaged - Vandalized","c":[],"k":1}],"k":2},{"n":"Service Entrance Wire","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Damaged - Vandalized","c":[],"k":1}],"k":2},{"n":"Line Wire","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Damaged - Vandalized","c":[],"k":1}],"k":2}],"k":9},{"n":"Internal AC","c":[{"n":"MCB Breaker","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Switched off - Vandalized","c":[],"k":1},{"n":"Illegal Tapping","c":[],"k":1}],"k":3},{"n":"MCB Wire","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Damaged - Vandalized","c":[],"k":1}],"k":2},{"n":"ECB Breaker","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Switched off - Vandalized","c":[],"k":1},{"n":"Illegal Tapping","c":[],"k":1}],"k":3},{"n":"ECB Wire","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Damaged - Vandalized","c":[],"k":1}],"k":2},{"n":"MDP Breaker","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Switched off - Vandalized","c":[],"k":1},{"n":"Illegal Tapping","c":[],"k":1}],"k":3},{"n":"MDP Wire","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Damaged - Vandalized","c":[],"k":1}],"k":2},{"n":"ACPDB Breaker","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Switched off - Vandalized","c":[],"k":1},{"n":"Illegal Tapping","c":[],"k":1}],"k":3},{"n":"ACPDB Wire","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Damaged - Vandalized","c":[],"k":1}],"k":2}],"k":20},{"n":"Rectifier System","c":[{"n":"Modules","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Backplane","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Controller","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Contactor","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Terminal Block","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1}],"k":5}],"k":34},{"n":"Prolonged SPI/UPI","c":[{"n":"Prolonged SPI/UPI","c":[{"n":"Prolonged SPI/UPI","c":[{"n":"Prolonged SPI/UPI","c":[],"k":1}],"k":1}],"k":1}],"k":1},{"n":"MNO Transport Issue","c":[{"n":"MNO Transport Issue","c":[{"n":"MNO Transport Issue","c":[{"n":"MNO Transport Issue","c":[],"k":1}],"k":1}],"k":1}],"k":1},{"n":"FTAP Activity","c":[{"n":"FTAP Activity","c":[{"n":"FTAP Activity","c":[{"n":"FTAP Activity","c":[],"k":1}],"k":1}],"k":1}],"k":1},{"n":"For RFO (Ticket stays open)","c":[],"k":1}],"k":145}],"total":158},"With Generator":{"causes":["Lessor Issue","Access Issue","Force Majeure","Security Risk","Not Applicable"],"grids":["Busted Transformer","Low Voltage Transformer","Damaged SE Wire","Damaged Dropwire","Damaged Line Wire","Burnt KWH Meter","Off Grid"],"tree":[{"n":"Component Issue","c":[{"n":"Generator","c":[{"n":"Starter Battery","c":[{"n":"Depleted - EUL","c":[],"k":1},{"n":"Defective","c":[],"k":1},{"n":"Exploded / Damaged - High Temperature","c":[],"k":1}],"k":3},{"n":"Starter Motor","c":[{"n":"Defective","c":[],"k":1}],"k":1},{"n":"Engine","c":[{"n":"Defective","c":[],"k":1},{"n":"Damaged","c":[],"k":1},{"n":"Overheat - Coolant Depleted","c":[],"k":1},{"n":"Overheat - Coolant Overflow","c":[],"k":1},{"n":"Low Engine Oil - Depleted","c":[],"k":1},{"n":"No Engine Oil - Depleted","c":[],"k":1},{"n":"No Engine Oil - Broken Oil Pressure Alarm Sensor","c":[],"k":1},{"n":"No Engine Oil - Airlocked","c":[],"k":1},{"n":"Contaminated Oil","c":[],"k":1}],"k":9},{"n":"AVR","c":[{"n":"Defective","c":[],"k":1}],"k":1},{"n":"Alternator","c":[{"n":"Defective","c":[],"k":1}],"k":1},{"n":"Radiator","c":[{"n":"High Temperature - Low / No Water","c":[],"k":1},{"n":"Leakage","c":[],"k":1}],"k":2},{"n":"Pump","c":[{"n":"Defective","c":[],"k":1}],"k":1},{"n":"DG Controller","c":[{"n":"Defective","c":[],"k":1}],"k":1},{"n":"DG Wire","c":[{"n":"Damaged - Poor Installation","c":[],"k":1},{"n":"Damaged - Rodent Bite","c":[],"k":1},{"n":"Damaged - Foreign Object Short Circuit","c":[],"k":1}],"k":3},{"n":"Fan Belt","c":[{"n":"Defective / Broken","c":[],"k":1}],"k":1},{"n":"Fuel Tank","c":[{"n":"Low / No Fuel - Depleted","c":[],"k":1},{"n":"Low / No Fuel - Airlocked","c":[],"k":1},{"n":"Low / No Fuel - Leakage","c":[],"k":1},{"n":"Contaminated - Unsealed Fuel Tank","c":[],"k":1}],"k":4},{"n":"Fuel Line","c":[{"n":"Clogged","c":[],"k":1},{"n":"Leakage","c":[],"k":1}],"k":2}],"k":29},{"n":"Internal AC","c":[{"n":"ACPDB Breaker","c":[{"n":"Burnt - Loose Connection","c":[],"k":1},{"n":"Burnt - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Short Circuit","c":[],"k":1}],"k":4},{"n":"ACPDB Wire","c":[{"n":"Damaged - Poor Installation","c":[],"k":1},{"n":"Damaged - Rodent Bite","c":[],"k":1},{"n":"Damaged - Foreign Object Short Circuit","c":[],"k":1},{"n":"Damaged - Undersized","c":[],"k":1}],"k":4},{"n":"MTS / ATS Breaker","c":[{"n":"Burnt - Loose Connection","c":[],"k":1},{"n":"Burnt - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Short Circuit","c":[],"k":1}],"k":4},{"n":"MTS / ATS Wire","c":[{"n":"Damaged - Poor Installation","c":[],"k":1},{"n":"Damaged - Rodent Bite","c":[],"k":1},{"n":"Damaged - Foreign Object Short Circuit","c":[],"k":1},{"n":"Damaged - Undersized","c":[],"k":1}],"k":4},{"n":"BTS Assembly","c":[{"n":"Damaged","c":[],"k":1}],"k":1}],"k":17},{"n":"Battery (DG Rest)","c":[{"n":"Battery","c":[{"n":"No Battery Backup - Defective","c":[],"k":1},{"n":"Exploded - High temperature","c":[],"k":1}],"k":2}],"k":2},{"n":"Rectifier System","c":[{"n":"Modules","c":[{"n":"Underrated - Capacity Overload","c":[],"k":1},{"n":"Defective","c":[],"k":1}],"k":2},{"n":"Backplane","c":[{"n":"Burnt","c":[],"k":1}],"k":1},{"n":"Controller","c":[{"n":"Defective","c":[],"k":1}],"k":1},{"n":"Contactor","c":[{"n":"Defective","c":[],"k":1}],"k":1},{"n":"Terminal Block","c":[{"n":"Burnt - Loose Connection","c":[],"k":1}],"k":1},{"n":"Breaker","c":[{"n":"Tripped - Electrical Overloading","c":[],"k":1},{"n":"Tripped - Short Circuit","c":[],"k":1}],"k":2}],"k":8}],"k":56},{"n":"Theft and Vandalism","c":[{"n":"Generator","c":[{"n":"Starter Battery","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Starter Motor","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Engine","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"AVR","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Alternator","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Radiator","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Pump","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Controller","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"DG Wire","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Damaged - Vandalized","c":[],"k":1}],"k":2},{"n":"Fan Belt","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Fuel Tank","c":[{"n":"Low / No Fuel - Stolen","c":[],"k":1}],"k":1},{"n":"Fuel Line","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1}],"k":13},{"n":"Internal AC","c":[{"n":"ACPDB Breaker","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Switched off - Vandalized","c":[],"k":1},{"n":"Low Voltage - Illegal Tapping","c":[],"k":1}],"k":3},{"n":"ACPDB Wire","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Damaged - Vandalized","c":[],"k":1}],"k":2},{"n":"MTS / ATS Breaker","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Switched off - Vandalized","c":[],"k":1}],"k":2},{"n":"MTS / ATS Wire","c":[{"n":"Missing - Stolen","c":[],"k":1},{"n":"Damaged - Vandalized","c":[],"k":1}],"k":2}],"k":9},{"n":"Battery","c":[{"n":"Battery","c":[{"n":"Missing Battery - Stolen","c":[],"k":1}],"k":1}],"k":1},{"n":"Rectifier System","c":[{"n":"Modules","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Backplane","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Controller","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Contactor","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1},{"n":"Terminal Block","c":[{"n":"Missing - Stolen","c":[],"k":1}],"k":1}],"k":5}],"k":28},{"n":"Force Majeure","c":[{"n":"Generator","c":[{"n":"Generator System","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"Starter Battery","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"Starter Motor","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"Engine","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"AVR","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"Alternator","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"Radiator","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"Pump","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"Controller","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"DG Wire","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"Fan Belt","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"Fuel Tank","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4},{"n":"Fuel Line","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4}],"k":52},{"n":"Internal AC","c":[{"n":"ACPDB Breaker","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"ACPDB Wire","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"MTS / ATS Breaker","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3},{"n":"MTS / ATS Wire","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1}],"k":3}],"k":12},{"n":"Battery","c":[{"n":"Battery","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4}],"k":4},{"n":"Rectifier System","c":[{"n":"Rectifier System","c":[{"n":"Damaged - Lightning Strike","c":[],"k":1},{"n":"Damaged - Typhoon","c":[],"k":1},{"n":"Damaged - Fire","c":[],"k":1},{"n":"Damaged - Flood","c":[],"k":1}],"k":4}],"k":4}],"k":72},{"n":"MNO Transport Issue","c":[{"n":"MNO Transport Issue","c":[{"n":"MNO Transport Issue","c":[{"n":"MNO Transport Issue","c":[],"k":1}],"k":1}],"k":1}],"k":1},{"n":"For RFO (Ticket stays open)","c":[],"k":1}],"total":158}}};
+
+const LV = ['Power Model','Cause of Delay','Grid Issue','Category','Part of Site','Subcategory','Detailed RCA','Remarks'];
+const COLORS = ['#1f3a5f','#b7791f','#0f766e','#2b6cb0','#6b46c1','#a21caf','#c2410c','#475569'];
+const W = 232, GAP = 84, PAD = 24, TOP = 40;
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const isWG = () => state.pm === 'With Generator';
+const CHEV = '<svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2l4 4-4 4"/></svg>';
+
+let state = fresh();
+let scale = 1;
+let cols = [];
+let prevSig = [];
+let canvasW = 0, canvasH = 0;
+
+function fresh() { return { pm:null, cause:null, gridTag:null, sel:[] }; }
+
+// Chain = levels that actually filter. Cause is never in it; Grid Issue is only in it for "Without Generator".
+function chainLevels() { return isWG() ? [3,4,5,6] : [2,3,4,5,6]; }
+
+function buildCols() {
+  const out = [];
+  const names = Object.keys(DATA.models);
+  out.push({ type:'nodes', ci:'root', level:0, selected:state.pm,
+    items:names.map(n => ({ key:n, label:n, count:DATA.models[n].total, kids:true })) });
+  if (!state.pm) return out;
+  const m = DATA.models[state.pm];
+  out.push({ type:'group', ci:'cause', level:1, selected:state.cause, items:m.causes,
+    note:'Tag only. Choosing one does not filter the columns to the right.' });
+  if (isWG()) {
+    out.push({ type:'group', ci:'grid', level:2, selected:state.gridTag, items:m.grids,
+      note:'With Generator: grid issue is a tag only and does not filter the columns to the right.' });
+  }
+  const lv = chainLevels();
+  let list = m.tree;
+  for (let i = 0; i < lv.length; i++) {
+    if (!list.length) break;
+    out.push({ type:'nodes', ci:i, level:lv[i], selected:state.sel[i] || null,
+      items:list.map(n => ({ key:n.n, label:n.n, count:n.k, kids:n.c.length > 0 })) });
+    const picked = list.find(n => n.n === state.sel[i]);
+    if (!picked) break;
+    list = picked.c;
+  }
+  if (state.sel.length === lv.length) {
+    out.push({ type:'remarks', ci:'remarks', level:7, items:[] });
+  }
+  return out;
+}
+
+function currentNode() {
+  if (!state.pm) return null;
+  let list = DATA.models[state.pm].tree, node = null;
+  for (const key of state.sel) {
+    node = list.find(n => n.n === key);
+    if (!node) break;
+    list = node.c;
+  }
+  return node;
+}
+
+function colHTML(col, ci, enter) {
+  const color = COLORS[col.level];
+  const cls = 'col' + (enter ? ' enter' : '') + (col.type === 'nodes' && col.selected ? ' has-sel' : '');
+  let inner = '';
+  if (col.type === 'group') {
+    inner = `<div class="group" data-id="c${ci}-g" style="--c:${color}">
+      <h3>${LV[col.level]}</h3><p>${esc(col.note)}</p>` +
+      col.items.map(k => `<button class="chip${col.selected === k ? ' sel' : ''}" data-col="${ci}" data-key="${esc(k)}" aria-pressed="${col.selected === k}">${esc(k)}</button>`).join('') +
+      `</div>`;
+  } else if (col.type === 'remarks') {
+    inner = `<div class="remarks" data-id="c${ci}-r" style="--c:${color}">
+      <h3>Remarks</h3><p>Free text for this Detailed RCA. Saved in this browser as you type.</p>
+      <textarea id="remarksBox" placeholder="Type remarks here..." aria-label="Remarks">${esc(getRemark())}</textarea></div>`;
+  } else {
+    inner = col.items.map((it, j) => `<button class="node${col.selected === it.key ? ' sel' : ''}" data-id="c${ci}-${j}" data-col="${ci}" data-key="${esc(it.key)}" aria-pressed="${col.selected === it.key}" style="--c:${color}">
+      <span>${esc(it.label)}</span><span class="meta"><span class="cnt" title="Distinct RCA paths below this node">${it.count}</span>${it.kids ? CHEV : ''}</span></button>`).join('');
+  }
+  return `<div class="${cls}" data-ci="${ci}">${inner}</div>`;
+}
+
+function render(reveal) {
+  cols = buildCols();
+  const sig = cols.map(c => c.type + c.level + '|' + c.items.map(i => i.key || i).join('~'));
+  $('#cols').innerHTML = cols.map((c, i) => colHTML(c, i, sig[i] !== prevSig[i])).join('');
+  prevSig = sig;
+  $('#heads').innerHTML = cols.map((c, i) => {
+    const n = c.type === 'group' ? 'tags' : 'nodes';
+    const sub = c.type === 'remarks' ? 'free text' : `${c.items.length} ${n}`;
+    return `<div class="head" style="--c:${COLORS[c.level]};left:${PAD + i * (W + GAP)}px"><i></i>${LV[c.level]}<span>${sub}</span></div>`;
+  }).join('');
+  layout();
+  renderCrumbs();
+  renderStatus();
+  if (reveal) revealLast();
+}
+
+function anchorOf(colEl, col) {
+  return col.type === 'group' ? colEl.querySelector('.group') : colEl.querySelector('.node.sel');
+}
+
+function layout() {
+  const colEls = [...$('#cols').children];
+  const tops = [];
+  let maxH = 0;
+  colEls.forEach((el, i) => {
+    el.style.left = (PAD + i * (W + GAP)) + 'px';
+    const h = el.offsetHeight;
+    let top = TOP;
+    if (i > 0) {
+      const a = anchorOf(colEls[i - 1], cols[i - 1]);
+      const ay = tops[i - 1] + a.offsetTop + a.offsetHeight / 2;
+      top = Math.max(TOP, ay - h / 2);
+    }
+    el.style.top = top + 'px';
+    tops[i] = top;
+    maxH = Math.max(maxH, top + h);
+  });
+  const n = colEls.length;
+  canvasW = PAD * 2 + n * W + (n - 1) * GAP + (n === 1 ? 300 : 0);
+  canvasH = maxH + 40;
+
+  // edges: anchor of column i-1 -> every element of column i
+  let paths = '';
+  for (let i = 1; i < n; i++) {
+    const a = anchorOf(colEls[i - 1], cols[i - 1]);
+    const x1 = PAD + (i - 1) * (W + GAP) + W;
+    const y1 = tops[i - 1] + a.offsetTop + a.offsetHeight / 2;
+    const x2 = PAD + i * (W + GAP);
+    const dx = (x2 - x1) * 0.5;
+    const color = COLORS[cols[i].level];
+    colEls[i].querySelectorAll('.node, .group, .remarks').forEach(ch => {
+      const y2 = tops[i] + ch.offsetTop + ch.offsetHeight / 2;
+      const active = cols[i].type !== 'nodes' || ch.classList.contains('sel');
+      const tag = cols[i].type === 'group' || cols[i - 1].type === 'group';
+      paths += `<path class="edge${active ? ' active' : ''}${tag ? ' tag' : ''}" data-to="${ch.dataset.id}" style="--c:${color}" d="M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}"/>`;
+    });
+  }
+  const svg = $('#edges');
+  svg.setAttribute('width', canvasW); svg.setAttribute('height', canvasH);
+  svg.innerHTML = paths;
+
+  const hint = $('#hint');
+  if (!state.pm) {
+    hint.style.display = 'block';
+    hint.style.left = (PAD + W + 36) + 'px';
+    hint.style.top = (TOP + 12) + 'px';
+    hint.innerHTML = 'Pick a power model to open the tree. Each click opens the next level to the right; click a selected node again to collapse it.';
+  } else hint.style.display = 'none';
+
+  applyScale();
+  window.__tops = tops;
+}
+
+function applyScale() {
+  $('#stage').style.transform = `scale(${scale})`;
+  const s = $('#sizer');
+  s.style.width = (canvasW * scale) + 'px';
+  s.style.height = (canvasH * scale) + 'px';
+  $('#zoomLbl').textContent = Math.round(scale * 100) + '%';
+}
+
+function revealLast() {
+  const vp = $('#viewport');
+  const n = cols.length;
+  const right = (PAD + (n - 1) * (W + GAP) + W + 36) * scale;
+  const left = right > vp.scrollLeft + vp.clientWidth ? right - vp.clientWidth : vp.scrollLeft;
+  const colEl = $('#cols').children[n - 1];
+  const t = window.__tops[n - 1] * scale, b = t + colEl.offsetHeight * scale;
+  let top = vp.scrollTop;
+  if (t < vp.scrollTop || b > vp.scrollTop + vp.clientHeight) top = Math.max(0, t - 56);
+  vp.scrollTo({ left, top, behavior:'smooth' });
+}
+
+function pathLabels() {
+  const parts = [];
+  if (!state.pm) return parts;
+  parts.push({ label:state.pm, level:0, act:'pm' });
+  if (state.cause) parts.push({ label:state.cause, level:1, act:'cause', tag:true });
+  if (isWG() && state.gridTag) parts.push({ label:state.gridTag, level:2, act:'grid', tag:true });
+  const lv = chainLevels();
+  state.sel.forEach((k, i) => parts.push({ label:k, level:lv[i], act:String(i) }));
+  return parts;
+}
+
+function renderCrumbs() {
+  const parts = pathLabels();
+  const el = $('#crumbs');
+  if (!parts.length) { el.innerHTML = '<span class="text-sm text-slate-500">No selection yet</span>'; return; }
+  el.innerHTML = parts.map((p, i) => {
+    const sep = i ? '<span class="sep">&rsaquo;</span>' : '';
+    return `${sep}<button class="crumb${p.tag ? ' tag' : ''}" data-act="${p.act}" style="--c:${COLORS[p.level]}" title="${p.tag ? 'Tag, click to clear' : 'Go back to this level'}"><small>${LV[p.level]}</small>${esc(p.label)}${p.tag ? ' &times;' : ''}</button>`;
+  }).join('');
+}
+
+function renderStatus() {
+  const st = $('#status');
+  const names = Object.keys(DATA.models);
+  $('#stats').textContent = names.map(n => `${n}: ${DATA.models[n].total} paths`).join('   |   ');
+  if (!state.pm) { st.textContent = 'Overview: choose a power model to begin.'; return; }
+  const node = currentNode();
+  const k = node ? node.k : DATA.models[state.pm].total;
+  let msg = `${k} distinct RCA path${k === 1 ? '' : 's'} in view.`;
+  if (node && !node.c.length) msg = state.sel.length === chainLevels().length ? 'Path complete. Add remarks in the box on the right.' : 'Path complete. This branch ends here.';
+  if (state.cause) msg += ` Tagged cause: ${state.cause}.`;
+  if (isWG() && state.gridTag) msg += ` Tagged grid issue: ${state.gridTag}.`;
+  st.textContent = msg;
+}
+
+// ----- interaction -----
+$('#cols').addEventListener('click', e => {
+  const b = e.target.closest('[data-key]');
+  if (!b) return;
+  const col = cols[+b.dataset.col], key = b.dataset.key;
+  if (col.ci === 'root') {
+    if (state.pm === key) state = fresh();
+    else { const keep = state.cause; state = fresh(); state.pm = key; state.cause = keep; }
+  } else if (col.ci === 'cause') {
+    state.cause = state.cause === key ? null : key;
+  } else if (col.ci === 'grid') {
+    state.gridTag = state.gridTag === key ? null : key;
+  } else {
+    const i = col.ci;
+    if (state.sel[i] === key) state.sel.length = i;
+    else { state.sel[i] = key; state.sel.length = i + 1; }
+  }
+  const tagOnly = col.ci === 'cause' || col.ci === 'grid';
+  render(!tagOnly);
+});
+
+$('#cols').addEventListener('mouseover', e => {
+  const n = e.target.closest('[data-id]');
+  if (!n) return;
+  document.querySelectorAll('.edge.hot').forEach(x => x.classList.remove('hot'));
+  const ed = document.querySelector(`.edge[data-to="${n.dataset.id}"]`);
+  if (ed) ed.classList.add('hot');
+});
+$('#cols').addEventListener('mouseleave', () => {
+  document.querySelectorAll('.edge.hot').forEach(x => x.classList.remove('hot'));
+});
+
+$('#crumbs').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  const a = b.dataset.act;
+  if (a === 'pm') state.sel = [];
+  else if (a === 'cause') state.cause = null;
+  else if (a === 'grid') state.gridTag = null;
+  else state.sel.length = +a + 1;
+  render(false);
+});
+
+$('#reset').addEventListener('click', () => {
+  state = fresh(); prevSig = [];
+  render(false);
+  $('#viewport').scrollTo({ left:0, top:0, behavior:'smooth' });
+});
+
+$('#zoomIn').addEventListener('click', () => { scale = Math.min(1.5, +(scale + 0.1).toFixed(2)); applyScale(); });
+$('#zoomOut').addEventListener('click', () => { scale = Math.max(0.5, +(scale - 0.1).toFixed(2)); applyScale(); });
+
+$('#copy').addEventListener('click', () => {
+  let t = pathLabels().map(p => p.tag ? `[${LV[p.level]}: ${p.label}]` : p.label).join(' > ');
+  if (t && state.sel.length === chainLevels().length && getRemark()) t += `\nRemarks: ${getRemark()}`;
+  const btn = $('#copy');
+  const done = ok => { btn.textContent = ok ? 'Copied' : 'Copy failed'; setTimeout(() => btn.textContent = 'Copy path', 1200); };
+  if (navigator.clipboard && t) navigator.clipboard.writeText(t).then(() => done(true), () => done(false));
+  else done(false);
+});
+
+// ----- remarks (free text, kept per Detailed RCA path) -----
+const STORE_KEY = 'rca_remarks_v1';
+let remarks = {};
+try { remarks = JSON.parse(localStorage.getItem(STORE_KEY) || '{}') || {}; } catch (e) { remarks = {}; }
+function remarkKey() { return state.pm + ' > ' + state.sel.join(' > '); }
+function getRemark() { return remarks[remarkKey()] || ''; }
+$('#cols').addEventListener('input', e => {
+  if (e.target.id !== 'remarksBox') return;
+  const k = remarkKey(), v = e.target.value;
+  if (v.trim()) remarks[k] = v; else delete remarks[k];
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(remarks)); } catch (err) {}
+});
+
+render(false);
+</script>
+</body>
+</html>
